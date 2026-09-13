@@ -92,6 +92,10 @@
 
 #define LED_MASK_ALL(led)		GENMASK(led->max_channels - 1, 0)
 
+#ifndef OPLUS_FEATURE_CAMERA_COMMON
+#define OPLUS_FEATURE_CAMERA_COMMON
+#endif
+
 enum flash_led_type {
 	FLASH_LED_TYPE_UNKNOWN,
 	FLASH_LED_TYPE_FLASH,
@@ -1491,7 +1495,9 @@ static int register_switch_device(struct qti_flash_led *led,
 		struct flash_switch_data *snode, struct device_node *node)
 {
 	int rc, i;
-
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	u32 val = 0;
+#endif
 	rc = of_property_read_string(node, "qcom,led-name",
 				&snode->cdev.name);
 	if (rc < 0) {
@@ -1519,6 +1525,12 @@ static int register_switch_device(struct qti_flash_led *led,
 	}
 
 	snode->symmetry_en = of_property_read_bool(node, "qcom,symmetry-en");
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	rc = of_property_read_u32(node, "oplus,symmetry-en", &val);
+	if (rc == 0) {
+		snode->symmetry_en = val;
+	}
+#endif
 
 	snode->on_time_ms = 0;
 	snode->off_time_ms = 0;

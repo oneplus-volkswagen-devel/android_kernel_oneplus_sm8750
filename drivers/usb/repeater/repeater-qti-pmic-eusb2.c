@@ -182,6 +182,8 @@ static void eusb2_repeater_update_seq(struct eusb2_repeater *er,
 						u32 *seq, u8 cnt)
 {
 	int i;
+	int ret;
+	u8 reg_FDF6, reg_1F1, reg_FD54;
 
 	dev_dbg(er->ur.dev, "param override seq count:%d\n", cnt);
 	for (i = 0; i < cnt; i = i+2) {
@@ -193,6 +195,18 @@ static void eusb2_repeater_update_seq(struct eusb2_repeater *er,
 						seq[i], seq[i+1]);
 #endif
 		eusb2_repeater_reg_write(er, seq[i+1], seq[i]);
+	}
+	ret = regmap_bulk_read(er->regmap, 0x1F1, &reg_1F1, 1);
+	if (ret) {
+		dev_err(er->ur.dev, "read failed: addr 0x1F1, ret=%d\n", ret);
+	}
+	dev_err(er->ur.dev, "read addr 0x1F1, value=%d\n", reg_1F1);
+	eusb2_repeater_reg_read(er, &reg_FDF6, 0xF6, 1);
+	eusb2_repeater_reg_read(er, &reg_FD54, 0x54, 1);
+	if (reg_1F1 == 42 || reg_1F1 == 43) {
+		if (reg_FDF6 == 0x04 || reg_FDF6 == 0x03 || reg_FDF6 == 0x02) {
+			eusb2_repeater_reg_write(er, 0x54, reg_FD54 + 3);
+		}
 	}
 }
 
