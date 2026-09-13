@@ -369,6 +369,7 @@ def define_sun():
         "drivers/soc/oplus/trackpoint/oplus_trackpoint_report.ko",
 #endif /* OPLUS_TRACKPOINT_REPORT */
         "drivers/soc/oplus/mdmrst/oplus_mdmrst.ko",
+        "drivers/soc/oplus/bluetooth/btuart/common/wq_dynamic_priority/oplus_btuart_ux.ko",
         "drivers/soc/oplus/osml_monitor/osml_monitor.ko",
         "drivers/soc/oplus/fpga_notify/oplus_bsp_fpga_notify.ko",
         "drivers/soc/oplus/power/subsys_sleep_monitor/oplus_subsys_sleep_monitor/oplus_ss_sleep_monitor.ko",

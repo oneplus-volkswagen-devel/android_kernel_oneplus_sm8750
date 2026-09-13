@@ -20,6 +20,7 @@ oplus_storage_log.ko
 oplus_uprobe.ko
 oplus_f2fslog_storage.ko
 oplus_wq_dynamic_priority.ko
+oplus_btuart_ux.ko
 oplus_file_record.ko
 dcc_v2.ko
 oplus_bsp_storage_io_metrics.ko
