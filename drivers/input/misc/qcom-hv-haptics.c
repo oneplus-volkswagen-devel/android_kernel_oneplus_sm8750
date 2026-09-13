@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/atomic.h>
@@ -229,8 +229,11 @@
 
 #define HAP_CFG_AUTORES_CFG_REG			0x63
 #define AUTORES_EN_BIT				BIT(7)
-#define AUTORES_EN_DLY_MASK(chip)		((chip->hw_type < HAP530_HV) ? \
-							GENMASK(5, 2) : GENMASK(6, 2))
+#ifdef OPLUS_FEATURE_CHG_BASIC
+#define AUTORES_EN_DLY_MASK			GENMASK(6, 2)
+#else
+#define AUTORES_EN_DLY_MASK			GENMASK(5, 2)
+#endif
 #define AUTORES_EN_DLY(cycles)			((cycles) * 2)
 #define AUTORES_EN_DLY_6_CYCLES			AUTORES_EN_DLY(6)
 #define AUTORES_EN_DLY_7_CYCLES			AUTORES_EN_DLY(7)
@@ -810,6 +813,7 @@ struct haptics_hw_config {
 	u32			vbat_low_soc_cold;
 	int			vbat_low_temp;
 	u32			vbat_low_fifo_vmax_mv;
+	bool 			oplus_auto_res_done;
 #endif
 	u32			t_lra_us;
 	u32			cl_t_lra_us;
@@ -953,6 +957,7 @@ struct haptics_chip {
 	int				trig_gpio[TRIG_GPIO_NUM];
 	int				trig_irq[TRIG_GPIO_NUM];
 	int				current_irq;
+	int				check_trig_status;
 	struct delayed_work		sw_trig_work;
 	bool				trig_support;
 	u32				current_play_us;
@@ -1367,7 +1372,7 @@ static int haptics_get_status_data(struct haptics_chip *chip,
 		"RNAT_RCAL_INT",
 		"BRAKE_CAL_SCALAR",
 	};
-	const char *name = NULL;
+	const char *name;
 
 	mod_sel_val[0] = sel & 0xff;
 	mod_sel_val[1] = (sel >> 8) & 0xff;
@@ -1475,6 +1480,11 @@ static int haptics_get_closeloop_lra_period(
 	}
 
 	auto_res_done = !!(val[0] & AUTO_RES_CAL_DONE_BIT);
+
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	chip->config.oplus_auto_res_done = auto_res_done;
+#endif
+
 	cal_tlra_cl_sts =
 		((val[0] & CAL_TLRA_CL_STS_MSB_MASK) << 8) | val[1];
 
@@ -1519,29 +1529,23 @@ static int haptics_get_closeloop_lra_period(
 		dev_dbg(chip->dev, "tlra_ol = %#x, tlra_cl_err_sts = %#x, cal_tlra_cl_sts = %#x\n",
 				tlra_ol, tlra_cl_err_sts, cal_tlra_cl_sts);
 
-		if (cal_tlra_cl_sts == 0 || tlra_cl_err_sts == 0) {
-			dev_warn(chip->dev, "Calibration invalid (cal=%d,err=%d),using OpenLoop period\n",
-					cal_tlra_cl_sts, tlra_cl_err_sts);
-			config->cl_t_lra_us = config->t_lra_us;
-			config->rc_clk_cal_count = 0;
-		} else {
-			tmp = tlra_cl_err_sts * tlra_ol;
-			tmp *= TLRA_AUTO_RES_ERR_AUTO_CAL_STEP_PSEC;
-			tmp = div_u64(tmp, cal_tlra_cl_sts);
-			config->cl_t_lra_us = div_u64(tmp, 1000000);
-			/* calculate RC_CLK_CAL_COUNT */
-			if (!config->t_lra_us || !config->cl_t_lra_us)
-				return -EINVAL;
-			/*
-			 * RC_CLK_CAL_COUNT = SLEEP_CLK_CAL_DIVIDER * (CAL_TLRA_OL / TLRA_OL)
-			 *	* (SLEEP_CLK_CAL_DIVIDER / 586) * (CL_T_TLRA_US / OL_T_LRA_US)
-			 */
-			tmp = SLEEP_CLK_CAL_DIVIDER * SLEEP_CLK_CAL_DIVIDER;
-			tmp *= cal_tlra_cl_sts * config->cl_t_lra_us;
-			tmp = div_u64(tmp, tlra_ol);
-			tmp = div_u64(tmp, 586);
-			config->rc_clk_cal_count = div_u64(tmp, config->t_lra_us);
-		}
+		tmp = tlra_cl_err_sts * tlra_ol;
+		tmp *= TLRA_AUTO_RES_ERR_AUTO_CAL_STEP_PSEC;
+		tmp = div_u64(tmp, cal_tlra_cl_sts);
+		config->cl_t_lra_us = div_u64(tmp, 1000000);
+
+		/* calculate RC_CLK_CAL_COUNT */
+		if (!config->t_lra_us || !config->cl_t_lra_us)
+			return -EINVAL;
+		/*
+		 * RC_CLK_CAL_COUNT = SLEEP_CLK_CAL_DIVIDER * (CAL_TLRA_OL / TLRA_OL)
+		 *		* (SLEEP_CLK_CAL_DIVIDER / 586) * (CL_T_TLRA_US / OL_T_LRA_US)
+		 */
+		tmp = SLEEP_CLK_CAL_DIVIDER * SLEEP_CLK_CAL_DIVIDER;
+		tmp *= cal_tlra_cl_sts * config->cl_t_lra_us;
+		tmp = div_u64(tmp, tlra_ol);
+		tmp = div_u64(tmp, 586);
+		config->rc_clk_cal_count = div_u64(tmp, config->t_lra_us);
 	} else if (rc_clk_cal == CAL_RC_CLK_AUTO_VAL && auto_res_done) {
 		/*
 		 * CAL_TLRA_CL_STS_W_CAL = CAL_TLRA_CL_STS;
@@ -4384,7 +4388,7 @@ static int haptics_init_vmax_config(struct haptics_chip *chip)
 
 	chip->is_hv_haptics = true;
 	chip->max_vmax_mv = MAX_VMAX_MV;
-	if (chip->hw_type >= HAP520_MV) {
+	if (chip->hw_type > HAP520_MV) {
 		rc = haptics_read(chip, chip->cfg_addr_base,
 			HAP_CFG_HW_CONFIG_REG, &val, 1);
 		if (rc < 0)
@@ -5309,6 +5313,11 @@ static irqreturn_t trig_irq_handler(int irq, void *data)
 		dev_err(chip->dev,"trig_irq_handler null.\n");
 		return IRQ_HANDLED;
 	}
+
+	if (chip->check_trig_status >= INT_MAX)
+		chip->check_trig_status = 0;
+	chip->check_trig_status++;
+
 	chip->current_irq = irq;
 	rc = enable_memory_trig_effect(chip);
 	if (rc < 0) {
@@ -6181,7 +6190,7 @@ static int haptics_detect_lra_frequency(struct haptics_chip *chip)
 	}
 	rc = haptics_masked_write(chip, chip->cfg_addr_base,
 			HAP_CFG_AUTORES_CFG_REG, AUTORES_EN_BIT |
-			AUTORES_EN_DLY_MASK(chip) | AUTORES_ERR_WINDOW_MASK,
+			AUTORES_EN_DLY_MASK | AUTORES_ERR_WINDOW_MASK,
 			val);
 	if (rc < 0)
 		return rc;
@@ -7201,7 +7210,15 @@ static int richtap_file_mmap(struct file *filp, struct vm_area_struct *vma)
 	int ret = 0;
 
 	//only accept PROT_READ, PROT_WRITE and MAP_SHARED from the API of mmap
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 89))
 	vm_flags_t vm_flags = calc_vm_prot_bits(PROT_READ|PROT_WRITE, 0);
+#elif (LINUX_VERSION_CODE > KERNEL_VERSION(6, 6, 0))
+	vm_flags_t vm_flags = calc_vm_prot_bits(PROT_READ|PROT_WRITE, 0) |
+		__calc_vm_flag_bits(MAP_SHARED);
+#else
+	vm_flags_t vm_flags = calc_vm_prot_bits(PROT_READ|PROT_WRITE, 0) |
+		calc_vm_flag_bits(MAP_SHARED);
+#endif
 	vm_flags |= current->mm->def_flags | VM_MAYREAD |
 		VM_MAYWRITE | VM_MAYEXEC | VM_SHARED | VM_MAYSHARE;
 	if (vma && (pgprot_val(vma->vm_page_prot) != pgprot_val(vm_get_page_prot(vm_flags))))
@@ -7269,6 +7286,14 @@ static ssize_t lra_frequency_hz_show(const struct class *c,
 
 	if (chip->config.cl_t_lra_us == 0)
 		return -EINVAL;
+
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	if (chip->config.oplus_auto_res_done == 0) {
+		dev_err(chip->dev,"vib short or open circuit oplus_auto_res_done= %d\n",
+					chip->config.oplus_auto_res_done);
+		return -EINVAL;
+	}
+#endif
 
 	cl_f_lra = USEC_PER_SEC / chip->config.cl_t_lra_us;
 
@@ -7694,6 +7719,31 @@ static ssize_t trig_support_store(const struct class *c,
 	return count;
 }
 static CLASS_ATTR_RW(trig_support);
+
+static ssize_t check_trig_status_show(const struct class *c,
+		const struct class_attribute *attr, char *buf)
+{
+	struct haptics_chip *chip = container_of(c,
+			struct haptics_chip, hap_class);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", chip->check_trig_status);
+}
+
+static ssize_t check_trig_status_store(const struct class *c,
+		const struct class_attribute *attr, const char *buf, size_t count)
+{
+	struct haptics_chip *chip = container_of(c,
+			struct haptics_chip, hap_class);
+	int val;
+
+	if (kstrtouint(buf, 0, &val))
+		return -EINVAL;
+	if (chip->check_trig_status >= 0)
+		chip->check_trig_status = val;
+	dev_err(chip->dev, "set check_trig_status = %d\n", val);
+	return count;
+}
+static CLASS_ATTR_RW(check_trig_status);
 #endif
 
 static ssize_t primitive_duration_show(const struct class *c,
@@ -7793,6 +7843,7 @@ static struct attribute *hap_class_attrs[] = {
 	&class_attr_vibrator_type.attr,
 	&class_attr_livetap_support.attr,
 	&class_attr_trig_support.attr,
+	&class_attr_check_trig_status.attr,
 #endif
 	&class_attr_primitive_duration.attr,
 	&class_attr_visense_enabled.attr,
@@ -8464,6 +8515,7 @@ static int haptics_probe(struct platform_device *pdev)
 	if (chip->trig_support) {
 		sw_trig_init(chip);
 		device_init_wakeup(&pdev->dev, true);
+		chip->check_trig_status = 0;
 	}
 #endif
 	haptics_runtime_autosuspend(chip);

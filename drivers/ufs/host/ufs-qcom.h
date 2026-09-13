@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef UFS_QCOM_H_
@@ -258,6 +258,12 @@ enum ufs_qcom_phy_init_type {
  * Enable this quirk to tune TX Deemphasis parameters.
  */
 #define UFS_DEVICE_QUIRK_PA_TX_DEEMPHASIS_TUNING (1 << 17)
+
+/*
+ * Samsung QLC ufs device needs a different set of drivers for HID and TW.
+ * Enable this quirk to config QLC HID & TW on.
+ */
+#define UFS_DEVICE_QUIRK_SAMSUNG_QLC             (1 << 18)
 
 static inline void
 ufs_qcom_get_controller_revision(struct ufs_hba *hba,
@@ -525,6 +531,7 @@ struct ufs_qcom_host {
 	#define UFS_QCOM_CAP_SHARED_ICE BIT(4)
 	u32 caps;
 	bool disable_ah8;
+
 	struct phy *generic_phy;
 	struct ufs_hba *hba;
 	struct ufs_qcom_bus_vote bus_vote;
@@ -572,6 +579,7 @@ struct ufs_qcom_host {
 	struct ufs_vreg *vccq_proxy_client;
 	bool work_pending;
 	bool bypass_g4_cfgready;
+	bool is_dt_pm_level_read;
 	bool is_phy_pwr_on;
 	/* Protect the usage of is_phy_pwr_on against racing */
 	struct mutex phy_mutex;
