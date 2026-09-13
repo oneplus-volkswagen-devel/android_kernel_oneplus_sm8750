@@ -11,6 +11,7 @@
 #include <linux/ipc_logging.h>
 #include <linux/module.h>
 #include <linux/qrtr.h>
+#include <linux/rcupdate.h>
 #include <linux/workqueue.h>
 #include <linux/xarray.h>
 #include <net/sock.h>
@@ -80,21 +81,12 @@ struct qrtr_node {
 	unsigned int id;
 	struct xarray servers;
 	u32 server_count;
+	struct rcu_head rcu;
 };
 
-/* Max server limit is chosen based on the current platform requirements. If the
- * requirement changes in the future, this value can be increased.
- */
+/* Limits are based on current platform requirements. */
 #define QRTR_NS_MAX_SERVERS 256
-
-/* Max lookup limit is chosen based on the current platform requirements. If the
- * requirement changes in the future, this value can be increased.
- */
 #define QRTR_NS_MAX_LOOKUPS 128
-
-/* Max nodes limit is chosen based on the current platform requirements.
- * If the requirement changes in the future, this value can be increased.
- */
 #define QRTR_NS_MAX_NODES   512
 
 static u16 node_count;
@@ -135,25 +127,57 @@ int qrtr_get_service_id(unsigned int node_id, unsigned int port_id)
 	struct qrtr_server *srv;
 	struct qrtr_node *node;
 	unsigned long index;
-	unsigned int svc_id;
+	int svc_id = -EINVAL;
 
+	rcu_read_lock();
 	node = xa_load(&nodes, node_id);
 	if (!node)
-		return -EINVAL;
+		goto out_rcu;
 
 	xa_lock(&node->servers);
 	xa_for_each(&node->servers, index, srv) {
 		if (srv->node == node_id && srv->port == port_id) {
 			svc_id = srv->service;
-			xa_unlock(&node->servers);
-			return svc_id;
+			break;
 		}
 	}
 	xa_unlock(&node->servers);
 
-	return -EINVAL;
+out_rcu:
+	rcu_read_unlock();
+	return svc_id;
 }
 EXPORT_SYMBOL_GPL(qrtr_get_service_id);
+
+#ifdef CONFIG_OPLUS_POWERINFO_STANDBY_DEBUG
+int qrtr_get_service_instance_id(unsigned int node_id, unsigned int port_id)
+{
+	struct qrtr_server *srv;
+	struct qrtr_node *node;
+	unsigned long index;
+	int instance_id = -EINVAL;
+	unsigned long flags;
+
+	rcu_read_lock();
+	node = xa_load(&nodes, node_id);
+	if (!node)
+		goto out_rcu;
+
+	xa_lock_irqsave(&node->servers, flags);
+	xa_for_each(&node->servers, index, srv) {
+		if (srv->node == node_id && srv->port == port_id) {
+			instance_id = srv->instance;
+			break;
+		}
+	}
+	xa_unlock_irqrestore(&node->servers, flags);
+
+out_rcu:
+	rcu_read_unlock();
+	return instance_id;
+}
+EXPORT_SYMBOL(qrtr_get_service_instance_id);
+#endif
 
 static int server_match(const struct qrtr_server *srv,
 			const struct qrtr_server_filter *f)
@@ -300,17 +324,6 @@ static struct qrtr_server *server_add(unsigned int service,
 	if (!service || !port)
 		return NULL;
 
-	node = node_get(node_id);
-	if (!node)
-		return NULL;
-
-	/* Make sure the new servers per port are capped at the maximum value */
-	old = xa_load(&node->servers, port);
-	if (!old && node->server_count >= QRTR_NS_MAX_SERVERS) {
-		pr_err_ratelimited("QRTR client node %u exceeds max server limit!\n", node_id);
-		return NULL;
-	}
-
 	srv = kzalloc(sizeof(*srv), GFP_KERNEL);
 	if (!srv)
 		return NULL;
@@ -319,6 +332,18 @@ static struct qrtr_server *server_add(unsigned int service,
 	srv->instance = instance;
 	srv->node = node_id;
 	srv->port = port;
+
+	node = node_get(node_id);
+	if (!node)
+		goto err;
+
+	/* Cap the number of servers registered for each node. */
+	old = xa_load(&node->servers, port);
+	if (!old && node->server_count >= QRTR_NS_MAX_SERVERS) {
+		pr_err_ratelimited("QRTR client node %u exceeds max server limit!\n",
+				   node_id);
+		goto err;
+	}
 
 	/* Delete the old server on the same port */
 	old = xa_store(&node->servers, port, srv, GFP_KERNEL);
@@ -442,10 +467,8 @@ static int ctrl_cmd_bye(struct sockaddr_qrtr *from)
 
 	/* Advertise the removal of this client to all local servers */
 	local_node = node_get(qrtr_ns.local_node);
-	if (!local_node) {
-		ret = 0;
+	if (!local_node)
 		goto delete_node;
-	}
 
 	memset(&pkt, 0, sizeof(pkt));
 	pkt.cmd = cpu_to_le32(QRTR_TYPE_BYE);
@@ -468,12 +491,12 @@ static int ctrl_cmd_bye(struct sockaddr_qrtr *from)
 		}
 	}
 
-	/* Ignore -ENODEV */
+	/* Ignore -ENODEV. */
 	ret = 0;
 
 delete_node:
 	xa_erase(&nodes, from->sq_node);
-	kfree(node);
+	kfree_rcu(node, rcu);
 	node_count--;
 
 	return ret;
@@ -803,7 +826,7 @@ static void qrtr_ns_worker(struct kthread_work *work)
 		}
 
 		if (ret < 0)
-			pr_err_ratelimited("failed while handling packet from %d:%d",
+			pr_err("failed while handling packet from %d:%d",
 			       sq.sq_node, sq.sq_port);
 	}
 
@@ -847,6 +870,10 @@ int qrtr_ns_init(void)
 		       PTR_ERR(qrtr_ns.task));
 		goto err_sock;
 	}
+
+	/* OPLUS_FEATURE_CAMERA_COMMON begin */
+	sched_set_fifo_low(qrtr_ns.task);
+	/* OPLUS_FEATURE_CAMERA_COMMON end */
 
 	qrtr_ns.saved_data_ready = qrtr_ns.sock->sk->sk_data_ready;
 	qrtr_ns.sock->sk->sk_data_ready = qrtr_ns_data_ready;
