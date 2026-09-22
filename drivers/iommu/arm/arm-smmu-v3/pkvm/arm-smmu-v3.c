@@ -1621,4 +1621,3 @@ struct kvm_iommu_ops smmu_ops = {
 	.unmap_pages			= smmu_unmap_pages,
 	.iova_to_phys			= smmu_iova_to_phys,
 };
-
