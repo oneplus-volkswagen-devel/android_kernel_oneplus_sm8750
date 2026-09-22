@@ -25,6 +25,9 @@ xhci_ring_to_sgtable(struct xhci_sideband *sb, struct xhci_ring *ring)
 	size_t sz;
 	int i;
 
+	if(!sb->xhci)
+		return NULL;
+
 	dev = xhci_to_hcd(sb->xhci)->self.sysdev;
 	sz = ring->num_segs * TRB_SEGMENT_SIZE;
 	n_pages = PAGE_ALIGN(sz) >> PAGE_SHIFT;
@@ -426,10 +429,12 @@ xhci_sideband_unregister(struct xhci_sideband *sb)
 
 	xhci_sideband_remove_interrupter(sb);
 
+	mutex_lock(&sb->mutex);
 	spin_lock_irq(&xhci->lock);
 	sb->xhci = NULL;
 	sb->vdev->sideband = NULL;
 	spin_unlock_irq(&xhci->lock);
+	mutex_unlock(&sb->mutex);
 
 	kfree(sb);
 }
