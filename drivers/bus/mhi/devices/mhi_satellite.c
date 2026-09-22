@@ -625,6 +625,7 @@ static void mhi_sat_send_sys_err(struct mhi_sat_cntrl *sat_cntrl)
 
 	mutex_lock(&sat_cntrl->cmd_wait_mutex);
 
+	reinit_completion(&sat_cntrl->completion);
 	ret = mhi_sat_send_msg(sat_cntrl, SAT_MSG_ID_CMD,
 			       SAT_RESERVED_SEQ_NUM, msg,
 			       SAT_MSG_SIZE(1));
