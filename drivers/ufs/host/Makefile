@@ -6,6 +6,7 @@ obj-$(CONFIG_SCSI_UFS_CDNS_PLATFORM) += cdns-pltfrm.o
 obj-$(CONFIG_SCSI_UFS_QCOM) += ufs_qcom.o
 ufs_qcom-y += ufs-qcom.o
 ufs_qcom-$(CONFIG_UFSFEATURE) += ufsfeature.o ufsfeature-mimic.o
+ufs_qcom-$(CONFIG_UFSTW) += ufstw.o
 ufs_qcom-$(CONFIG_UFSHID) += ufshid.o
 obj-$(CONFIG_SCSI_UFS_CRYPTO_QTI) += ufshcd-crypto-qti.o
 obj-$(CONFIG_SCSI_UFS_EXYNOS) += ufs-exynos.o
