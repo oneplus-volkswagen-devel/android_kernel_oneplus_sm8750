@@ -202,6 +202,23 @@ define_common_kernels(target_configs = {
             ":tests_zip_arm64",
         ],
     },
+    "kernel_aarch64_autofdo": {
+        "kmi_symbol_list_strict_mode": True,
+        "kmi_symbol_list": "android/abi_gki_aarch64",
+        "additional_kmi_symbol_lists": [":aarch64_additional_kmi_symbol_lists"],
+        "trim_nonlisted_kmi": True,
+        "protected_exports_list": "android/abi_gki_protected_exports_aarch64",
+        "protected_modules_list": ":gki_aarch64_protected_modules",
+        "module_implicit_outs": get_gki_modules_list("arm64") + get_kunit_modules_list("arm64"),
+        "make_goals": _GKI_AARCH64_MAKE_GOALS,
+        "clang_autofdo_profile": ":android/gki/aarch64/afdo/kernel.afdo",
+        "defconfig_fragments": ["arch/arm64/configs/autofdo_gki.fragment"],
+        "ddk_headers_archive": ":kernel_aarch64_ddk_headers_archive",
+        "extra_dist": [
+            ":test_mappings_zip",
+            ":tests_zip_arm64",
+        ],
+    },
     "kernel_x86_64": {
         "kmi_symbol_list_strict_mode": False,
         "module_implicit_outs": get_gki_modules_list("x86_64") + get_kunit_modules_list("x86_64"),
@@ -1074,6 +1091,26 @@ ddk_headers(
     visibility = ["//visibility:public"],
 )
 
+# oplus modules depend on ack need headers add here
+# globs() for all architectures
+filegroup(
+    name = "all_headers_allowlist_common_globs_oplus",
+    srcs = glob([
+        "kernel/**/*.h",
+        "fs/**/*.h",
+        "**/**/*.h",
+        "scripts/dtc/libfdt/*.h",
+        "mm/*.h",
+    ]),
+    visibility = ["//visibility:private"],
+)
+# oplus modules depend on ack need directory add here
+linux_includes_oplus = [
+    "fs/proc",
+    "mm",
+    ".",
+]
+
 ddk_headers_archive(
     name = "kernel_x86_64_ddk_headers_archive",
     srcs = [
@@ -1123,6 +1160,7 @@ ddk_headers(
         "sound/usb/usbaudio.h",
         ":all_headers_allowlist_aarch64_globs",
         ":all_headers_allowlist_common_globs",
+        ":all_headers_allowlist_common_globs_oplus",
         ":xhci_headers",
     ],
     # The list of include directories where source files can #include headers
@@ -1141,7 +1179,7 @@ ddk_headers(
         "sound/usb",
         "include",
         "include/uapi",
-    ],
+    ] + linux_includes_oplus,
     visibility = ["//visibility:private"],
 )
 

@@ -91,6 +91,9 @@ def define_sun():
         "drivers/iio/adc/qti-glink-adc.ko",
         "drivers/input/misc/pm8941-pwrkey.ko",
         "drivers/input/misc/qcom-hv-haptics.ko",
+        "drivers/misc/vibrator/oplus_haptic/oplus_haptic.ko",
+        "drivers/misc/vibrator/haptic_feedback/haptic_feedback.ko",
+        "drivers/input/misc/qpnp-power-on.ko",
         "drivers/interconnect/qcom/icc-bcm-voter.ko",
         "drivers/interconnect/qcom/icc-debug.ko",
         "drivers/interconnect/qcom/icc-rpmh.ko",
@@ -109,6 +112,8 @@ def define_sun():
         "drivers/leds/leds-qpnp-vibrator-ldo.ko",
         "drivers/leds/leds-qti-flash.ko",
         "drivers/leds/rgb/leds-qcom-lpg.ko",
+        "drivers/leds/aw210xx/leds_aw210xx_algo.ko",
+        "drivers/leds/fan/oplus_fan.ko",
         "drivers/mailbox/msm_qmp.ko",
         "drivers/mailbox/qcom-ipcc.ko",
         "drivers/mfd/qcom-i2c-pmic.ko",
@@ -134,7 +139,16 @@ def define_sun():
         "drivers/power/reset/qcom-pon.ko",
         "drivers/power/reset/qcom-reboot-reason.ko",
         "drivers/power/reset/reboot-mode.ko",
-        "drivers/power/supply/qti_battery_charger.ko",
+        #ifndef OPLUS_FEATURE_CHG_BASIC
+        #"drivers/power/supply/qti_battery_charger.ko",
+        #else
+        "drivers/power/oplus/gauge_i2c_rst/oplus_gauge_i2c_rst.ko",
+        "drivers/power/oplus/v2/oplus_chg_v2.ko",
+        "drivers/power/oplus/test-kit/test-kit.ko",
+        "drivers/power/oplus/v2/ufcs/ufcs_class.ko",
+        "drivers/power/oplus/wireless_pen/oplus_wireless_pen.ko",
+        #endif
+        "drivers/pwm/pwm-qti-lpg.ko",
         "drivers/regulator/debug-regulator.ko",
         "drivers/regulator/proxy-consumer.ko",
         "drivers/regulator/qcom-amoled-regulator.ko",
@@ -142,6 +156,8 @@ def define_sun():
         "drivers/regulator/qti-ocp-notifier.ko",
         "drivers/regulator/rpmh-regulator.ko",
         "drivers/regulator/stub-regulator.ko",
+        "drivers/regulator/camera_aw37004/oplus_camera_aw37004.ko",
+        "drivers/regulator/qcom_pm8008-regulator.ko",
         "drivers/remoteproc/qcom_pil_info.ko",
         "drivers/remoteproc/qcom_q6v5.ko",
         "drivers/remoteproc/qcom_q6v5_pas.ko",
@@ -265,7 +281,7 @@ def define_sun():
         "drivers/thermal/qcom/thermal_pause.ko",
         "drivers/tty/hvc/hvc_gunyah.ko",
         "drivers/tty/serial/msm_geni_serial.ko",
-        "drivers/ufs/host/ufs-qcom.ko",
+        "drivers/ufs/host/ufs_qcom.ko",
         "drivers/ufs/host/ufshcd-crypto-qti.ko",
         "drivers/uio/msm_sharedmem/msm_sharedmem.ko",
         "drivers/usb/dwc3/dwc3-msm.ko",
@@ -273,6 +289,7 @@ def define_sun():
         "drivers/usb/gadget/function/usb_f_ccid.ko",
         "drivers/usb/gadget/function/usb_f_cdev.ko",
         "drivers/usb/gadget/function/usb_f_gsi.ko",
+        "drivers/usb/gadget/function/usb_f_rndis.ko",
         "drivers/usb/gadget/function/usb_f_qdss.ko",
         "drivers/usb/host/xhci-sideband.ko",
         "drivers/usb/phy/phy-generic.ko",
@@ -307,6 +324,27 @@ def define_sun():
         "net/wireless/cfg80211.ko",
         "sound/soc/codecs/snd-soc-hdmi-codec.ko",
         "sound/usb/snd-usb-audio-qmi.ko",
+        "drivers/soc/oplus/boot/cmdline_parser/oplusboot.ko",
+        "drivers/soc/oplus/boot/cmdline_parser/oplus_ftm_mode.ko",
+        "drivers/soc/oplus/boot/cmdline_parser/buildvariant.ko",
+        "drivers/soc/oplus/boot/cmdline_parser/cdt_integrity.ko",
+        "drivers/soc/oplus/boot/cmdline_parser/oplus_charger_present.ko",
+        "drivers/soc/oplus/boot/oplus_projectinfo/oplus_bsp_boot_projectinfo.ko",
+        "drivers/soc/oplus/boot/bootmode/boot_mode.ko",
+        "drivers/soc/oplus/boot/bootloader_log/bootloader_log.ko",
+        "drivers/soc/oplus/device_info/device_info.ko",
+        "drivers/soc/oplus/dft/common/olc/olc.ko",
+        "drivers/soc/oplus/dft/common/feedback/kernel_fb.ko",
+        "drivers/base/kernelFwUpdate/oplus_bsp_fw_update.ko",
+        "drivers/base/touchpanel_notify/oplus_bsp_tp_notify.ko",
+        "drivers/soc/oplus/storage/common/ufs_oplus_dbg/ufs-oplus-dbg.ko",
+#ifdef OPLUS_TRACKPOINT_REPORT
+        "drivers/soc/oplus/trackpoint/oplus_trackpoint_report.ko",
+#endif /* OPLUS_TRACKPOINT_REPORT */
+        "drivers/soc/oplus/fpga_notify/oplus_bsp_fpga_notify.ko",
+        "drivers/base/magtransfer/oplus_magcvr_notify.ko",
+        "drivers/nfc/thn31/tms_device_modules.ko",
+        "drivers/nfc/oplus_nfc/oplus_nfc.ko",
     ]
 
     _sun_consolidate_in_tree_modules = _sun_in_tree_modules + [
@@ -332,18 +370,18 @@ def define_sun():
 
         if variant == "consolidate":
             mod_list = _sun_consolidate_in_tree_modules
-            board_bootconfig_extras += ["androidboot.serialconsole=1"]
+            board_bootconfig_extras += ["androidboot.serialconsole=0"]
             board_kernel_cmdline_extras += [
                 # do not sort
-                "console=ttyMSM0,115200n8",
-                "qcom_geni_serial.con_enabled=1",
+                "console=ttynull",
+                "qcom_geni_serial.con_enabled=0",
                 "earlycon",
                 "ufshcd_core.uic_cmd_timeout=2000",
             ]
             kernel_vendor_cmdline_extras += [
                 # do not sort
-                "console=ttyMSM0,115200n8",
-                "qcom_geni_serial.con_enabled=1",
+                "console=ttynull",
+                "qcom_geni_serial.con_enabled=0",
                 "earlycon",
             ]
         else:
