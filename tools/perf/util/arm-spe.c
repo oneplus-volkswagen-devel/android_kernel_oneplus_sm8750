@@ -526,6 +526,10 @@ static u64 arm_spe__synth_data_source(const struct arm_spe_record *record, u64 m
 	if (!is_ldst_op(record->op))
 		return 0;
 
+	/* Only synthesize data source for LDST operations */
+	if (!is_ldst_op(record->op))
+		return 0;
+
 	if (record->op & ARM_SPE_OP_LD)
 		data_src.mem_op = PERF_MEM_OP_LOAD;
 	else if (record->op & ARM_SPE_OP_ST)
