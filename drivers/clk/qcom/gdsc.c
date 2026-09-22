@@ -559,8 +559,7 @@ int gdsc_register(struct gdsc_desc *desc,
 
 		ret = gdsc_genpd_debug_register(scs[i]);
 		if (ret)
-			dev_warn(dev, "Failed to register debugfs for %s ret=%d\n",
-							scs[i]->pd.name, ret);
+			goto err_pm_subdomain_remove;
 	}
 
 	return of_genpd_add_provider_onecell(dev->of_node, data);
