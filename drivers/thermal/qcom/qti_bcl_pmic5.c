@@ -1405,6 +1405,7 @@ static int bcl_probe(struct platform_device *pdev)
 	char bcl_name[MAX_BCL_NAME_LENGTH];
 	int err = 0, ret = 0;
 
+
 	if (bcl_device_ct >= MAX_PERPH_COUNT) {
 		dev_err(&pdev->dev, "Max bcl peripheral supported already.\n");
 		return -EINVAL;
