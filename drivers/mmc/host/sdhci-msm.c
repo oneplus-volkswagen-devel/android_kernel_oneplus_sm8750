@@ -197,6 +197,11 @@
 			ipc_log_string(host->sdhci_msm_ipc_log_ctx,	\
 					"%s: " fmt, __func__, ##__VA_ARGS__);\
 	} while (0)
+/* Max load for SD Vdd supply */
+#define SD_VMMC_MAX_LOAD_UA	800000
+
+/* Max load for SD Vdd-io supply */
+#define SD_VQMMC_MAX_LOAD_UA	22000
 
 /* Max load for SD Vdd supply */
 #define SD_VMMC_MAX_LOAD_UA	800000
@@ -4672,7 +4677,6 @@ static void sdhci_msm_qos_init(struct sdhci_msm_host *msm_host)
 					err);
 			continue;
 		}
-
 		qcg->mask.bits[0] = mask & cpu_possible_mask->bits[0];
 		if (!qcg->mask.bits[0]) {
 			dev_err(&pdev->dev, "Invalid group mask, use default\n");

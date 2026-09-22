@@ -25,6 +25,8 @@
 
 #define CGX_RX_STAT_GLOBAL_INDEX	9
 
+#define CGX_RX_STAT_GLOBAL_INDEX	9
+
 static LIST_HEAD(cgx_list);
 
 /* Convert firmware speed encoding to user format(Mbps) */
