@@ -34,6 +34,7 @@
 #include <linux/qti-smmu-proxy-callbacks.h>
 
 #include "qcom_sg_ops.h"
+#include "qcom_dma_trace.h"
 
 int proxy_invalid_map(struct device *dev, struct sg_table *table,
 		      struct dma_buf *dmabuf)
