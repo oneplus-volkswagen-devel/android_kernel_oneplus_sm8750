@@ -10987,6 +10987,7 @@ void free_netdev(struct net_device *dev)
 {
 	struct napi_struct *p, *n;
 
+	pr_err("%s(%d) Freeing dev:%s", __func__, __LINE__, dev->name);
 	might_sleep();
 
 	/* When called immediately after register_netdevice() failed the unwind
@@ -11029,6 +11030,7 @@ void free_netdev(struct net_device *dev)
 	BUG_ON(dev->reg_state != NETREG_UNREGISTERED);
 	dev->reg_state = NETREG_RELEASED;
 
+	pr_err("%s(%d) Freeing dev:%s", __func__, __LINE__, dev->name);
 	/* will free via device release */
 	put_device(&dev->dev);
 }
