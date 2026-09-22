@@ -14,6 +14,8 @@ mem_buf_dev.ko
 mem_buf_msgq.ko
 msm_dma_iommu_mapping.ko
 qcom-pdc.ko
+device_info.ko
+ufs-oplus-dbg.ko
 dcc_v2.ko
 debug_symbol.ko
 minidump.ko
@@ -96,7 +98,7 @@ qcom_aoss.ko
 msm_qmp.ko
 ufshcd-crypto-qti.ko
 qcom_ice.ko
-ufs-qcom.ko
+ufs_qcom.ko
 gh_arm_drv.ko
 gh_dbl.ko
 gh_msgq.ko
@@ -116,7 +118,17 @@ crm-v2.ko
 qcom_wdt_core.ko
 qcom-cpufreq-thermal.ko
 gh_virt_wdt.ko
+oplusboot.ko
+oplus_ftm_mode.ko
+buildvariant.ko
+cdt_integrity.ko
+oplus_bsp_boot_projectinfo.ko
+boot_mode.ko
+bootloader_log.ko
+oplus_charger_present.ko
 bcl_pmic5.ko
+olc.ko
+kernel_fb.ko
 qcom-cpufreq-hw.ko
 nvmem_qfprom.ko
 qfprom-sys.ko
