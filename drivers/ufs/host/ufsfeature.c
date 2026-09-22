@@ -49,7 +49,8 @@ static int ufsf_read_desc(struct ufs_hba *hba, u8 desc_id, u8 desc_index,
 	ufshcd_rpm_get_sync(hba);
 
 	err = ufshcd_query_descriptor_retry(hba, UPIU_QUERY_OPCODE_READ_DESC,
-					    desc_id, desc_index, 0,
+					    desc_id, desc_index,
+					    UFSFEATURE_SELECTOR,
 					    desc_buf, &size);
 	if (err)
 		ERR_MSG("reading Device Desc failed. err = %d", err);
@@ -64,8 +65,8 @@ static int ufsf_read_dev_desc(struct ufsf_feature *ufsf)
 	u8 desc_buf[UFSF_QUERY_DESC_DEVICE_MAX_SIZE];
 	int ret;
 
-	ret = ufsf_read_desc(ufsf->hba, UFSF_QUERY_DESC_IDN_VENDOR_DEVICE, 0,
-			     desc_buf, UFSF_QUERY_DESC_DEVICE_MAX_SIZE);
+	ret = ufsf_read_desc(ufsf->hba, QUERY_DESC_IDN_DEVICE, 0, desc_buf,
+			     UFSF_QUERY_DESC_DEVICE_MAX_SIZE);
 	if (ret)
 		return ret;
 
@@ -78,13 +79,12 @@ static int ufsf_read_dev_desc(struct ufsf_feature *ufsf)
 		  desc_buf[DEVICE_DESC_PARAM_EX_FEAT_SUP+2],
 		  desc_buf[DEVICE_DESC_PARAM_EX_FEAT_SUP+3]);
 
-	INFO_MSG("samsung extend=0x%.2x_%.2x",
-		  desc_buf[DEVICE_DESC_PARAM_SAMSUNG_SUP+2],
-		  desc_buf[DEVICE_DESC_PARAM_SAMSUNG_SUP+3]);
-
 	INFO_MSG("Driver Feature Version : (%.6X%s)", UFSFEATURE_DD_VER,
 		 UFSFEATURE_DD_VER_POST);
 
+#if defined(CONFIG_UFSTW)
+	ufstw_get_dev_info(ufsf, desc_buf);
+#endif
 #if defined(CONFIG_UFSHID)
 	ufshid_get_dev_info(ufsf, desc_buf);
 #endif
@@ -96,11 +96,15 @@ static int ufsf_read_geo_desc(struct ufsf_feature *ufsf)
 	u8 geo_buf[UFSF_QUERY_DESC_GEOMETRY_MAX_SIZE];
 	int ret;
 
-	ret = ufsf_read_desc(ufsf->hba, UFSF_QUERY_DESC_IDN_VENDOR_GEOMETRY, 0,
-			     geo_buf, UFSF_QUERY_DESC_GEOMETRY_MAX_SIZE);
+	ret = ufsf_read_desc(ufsf->hba, QUERY_DESC_IDN_GEOMETRY, 0, geo_buf,
+			     UFSF_QUERY_DESC_GEOMETRY_MAX_SIZE);
 	if (ret)
 		return ret;
 
+#if defined(CONFIG_UFSTW)
+	if (ufstw_get_state(ufsf) == TW_NEED_INIT)
+		ufstw_get_geo_info(ufsf, geo_buf);
+#endif
 #if defined(CONFIG_UFSHID)
 	if (ufshid_get_state(ufsf) == HID_NEED_INIT)
 		ufshid_get_geo_info(ufsf, geo_buf);
@@ -108,14 +112,41 @@ static int ufsf_read_geo_desc(struct ufsf_feature *ufsf)
 	return 0;
 }
 
+static void ufsf_read_unit_desc(struct ufsf_feature *ufsf, int lun)
+{
+	u8 unit_buf[UFSF_QUERY_DESC_UNIT_MAX_SIZE];
+	int lu_enable, ret;
+
+	ret = ufsf_read_desc(ufsf->hba, QUERY_DESC_IDN_UNIT, lun,
+			     unit_buf, UFSF_QUERY_DESC_UNIT_MAX_SIZE);
+	if (ret) {
+		ERR_MSG("read unit desc failed. ret (%d)", ret);
+		return;
+	}
+
+	lu_enable = unit_buf[UNIT_DESC_PARAM_LU_ENABLE];
+	if (!lu_enable)
+		return;
+
+#if defined(CONFIG_UFSTW)
+	if (ufstw_get_state(ufsf) == TW_NEED_INIT)
+		ufstw_alloc_lu(ufsf, lun, unit_buf);
+#endif
+}
+
 void ufsf_device_check(struct ufs_hba *hba)
 {
 	struct ufsf_feature *ufsf = ufs_qcom_get_ufsf(hba);
+	int lun;
 
 	if (ufsf_read_dev_desc(ufsf))
 		return;
 
-	ufsf_read_geo_desc(ufsf);
+	if (ufsf_read_geo_desc(ufsf))
+		return;
+
+	seq_scan_lu(lun)
+		ufsf_read_unit_desc(ufsf, lun);
 }
 
 inline void ufsf_rpm_put_noidle(struct ufs_hba *hba)
@@ -234,11 +265,33 @@ inline int ufsf_prep_fn(struct ufsf_feature *ufsf, struct ufshcd_lrb *lrbp)
 {
 	int ret = 0;
 
+	/* This is for READ10_DEBUG (ufs-util) */
+	if (get_unaligned_be32(lrbp->cmd->cmnd + 2) == READ10_DEBUG_LBA) {
+		lrbp->lun = READ10_DEBUG_LUN;
+		INFO_MSG("Change lun to 0x%X", lrbp->lun);
+		return ret;
+	}
+
+#if defined(CONFIG_UFSTW)
+	if (ufstw_get_state(ufsf) == TW_PRESENT)
+		ufstw_prep_fn(ufsf, lrbp);
+#endif
 #if defined(CONFIG_UFSHID)
 	if (ufshid_get_state(ufsf) == HID_PRESENT)
 		ufshid_prep_fn(ufsf, lrbp);
 #endif
 	return ret;
+}
+
+inline void ufsf_reset_lu(struct ufsf_feature *ufsf)
+{
+#if defined(CONFIG_UFSTW)
+	INFO_MSG("run reset_lu.. tw_state(%d)", ufstw_get_state(ufsf));
+	if (ufstw_get_state(ufsf) == TW_PRESENT) {
+		ufstw_set_state(ufsf, TW_RESET);
+		ufstw_reset(ufsf);
+	}
+#endif
 }
 
 /*
@@ -268,28 +321,43 @@ inline void ufsf_reset_host(struct ufsf_feature *ufsf)
 	if (!eh_flags)
 		return;
 
+#if defined(CONFIG_UFSTW)
+	INFO_MSG("run reset_host.. tw_state(%d) -> TW_RESET",
+		 ufstw_get_state(ufsf));
+	if (ufstw_get_state(ufsf) == TW_PRESENT)
+		ufstw_reset_host(ufsf);
+#endif
 #if defined(CONFIG_UFSHID)
 	INFO_MSG("run reset_host.. hid_state(%d) -> HID_RESET",
 		 ufshid_get_state(ufsf));
 	if (ufshid_get_state(ufsf) == HID_PRESENT)
 		ufshid_reset_host(ufsf);
 #endif
-
 	schedule_work(&ufsf->reset_wait_work);
 }
 
 inline void ufsf_init(struct ufsf_feature *ufsf)
 {
+#if defined(CONFIG_UFSTW)
+	if (ufstw_get_state(ufsf) == TW_NEED_INIT)
+		ufstw_init(ufsf);
+#endif
 #if defined(CONFIG_UFSHID)
 	if (ufshid_get_state(ufsf) == HID_NEED_INIT)
 		ufshid_init(ufsf);
 #endif
-
 	ufsf->check_init = true;
 }
 
 inline void ufsf_reset(struct ufsf_feature *ufsf)
 {
+#if defined(CONFIG_UFSTW)
+	if (ufstw_get_state(ufsf) == TW_RESET) {
+		INFO_MSG("reset start.. tw_state %d",
+			 ufstw_get_state(ufsf));
+		ufstw_reset(ufsf);
+	}
+#endif
 #if defined(CONFIG_UFSHID)
 	if (ufshid_get_state(ufsf) == HID_RESET)
 		ufshid_reset(ufsf);
@@ -298,6 +366,10 @@ inline void ufsf_reset(struct ufsf_feature *ufsf)
 
 inline void ufsf_remove(struct ufsf_feature *ufsf)
 {
+#if defined(CONFIG_UFSTW)
+	if (ufstw_get_state(ufsf) == TW_PRESENT)
+		ufstw_remove(ufsf);
+#endif
 #if defined(CONFIG_UFSHID)
 	if (ufshid_get_state(ufsf) == HID_PRESENT)
 		ufshid_remove(ufsf);
@@ -382,6 +454,9 @@ inline void ufsf_set_init_state(struct ufs_hba *hba)
 	INIT_WORK(&ufsf->device_check_work, ufsf_device_check_work_handler);
 	INIT_WORK(&ufsf->reset_wait_work, ufsf_reset_wait_work_handler);
 	INIT_WORK(&ufsf->resume_work, ufsf_resume_work_handler);
+#if defined(CONFIG_UFSTW)
+	ufstw_set_state(ufsf, TW_NEED_INIT);
+#endif
 #if defined(CONFIG_UFSHID)
 	ufshid_set_state(ufsf, HID_NEED_INIT);
 #endif
@@ -398,6 +473,10 @@ inline void ufsf_suspend(struct ufsf_feature *ufsf, bool is_system_pm)
 	 */
 	flush_work(&ufsf->reset_wait_work);
 
+#if defined(CONFIG_UFSTW)
+	if (ufstw_get_state(ufsf) == TW_PRESENT)
+		ufstw_suspend(ufsf);
+#endif
 #if defined(CONFIG_UFSHID)
 	if (ufshid_get_state(ufsf) == HID_PRESENT)
 		ufshid_suspend(ufsf, is_system_pm);
@@ -406,6 +485,10 @@ inline void ufsf_suspend(struct ufsf_feature *ufsf, bool is_system_pm)
 
 inline void ufsf_resume(struct ufsf_feature *ufsf, bool is_link_off)
 {
+#if defined(CONFIG_UFSTW)
+	if (ufstw_get_state(ufsf) == TW_SUSPEND)
+		ufstw_resume(ufsf, is_link_off);
+#endif
 #if defined(CONFIG_UFSHID)
 	if (ufshid_get_state(ufsf) == HID_SUSPEND)
 		ufshid_resume(ufsf, is_link_off);

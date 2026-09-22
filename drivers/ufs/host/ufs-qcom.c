@@ -2583,7 +2583,11 @@ static int ufs_qcom_apply_dev_quirks(struct ufs_hba *hba)
 
 	if (hba->dev_info.wmanufacturerid == UFS_VENDOR_MICRON)
 		hba->dev_quirks |= UFS_DEVICE_QUIRK_DELAY_BEFORE_LPM;
-
+	/* the v7 and other ufs need to keep vcc on for stability */
+	if (hba->dev_quirks & (UFS_DEVICE_QUIRK_SAMSUNG_QLC)) {
+		hba->rpm_lvl = 1;
+		hba->spm_lvl = 1;
+	}
 	return err;
 }
 
@@ -5422,6 +5426,9 @@ static struct ufs_dev_quirk ufs_qcom_dev_fixups[] = {
 	{ .wmanufacturerid = UFS_VENDOR_TOSHIBA,
 	  .model = UFS_ANY_MODEL,
 	  .quirk = UFS_DEVICE_QUIRK_DELAY_AFTER_LPM },
+	{ .wmanufacturerid = UFS_VENDOR_SAMSUNG,
+	  .model = "KLUFG4LHGC-B0E1",
+	  .quirk = UFS_DEVICE_QUIRK_SAMSUNG_QLC },
 	{}
 };
 
