@@ -182,6 +182,9 @@ static void eusb2_repeater_update_seq(struct eusb2_repeater *er,
 						u32 *seq, u8 cnt)
 {
 	int i;
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	u8 reg_1F1, reg_FD54, reg_FDF6;
+#endif
 
 	dev_dbg(er->ur.dev, "param override seq count:%d\n", cnt);
 	for (i = 0; i < cnt; i = i+2) {
@@ -194,6 +197,28 @@ static void eusb2_repeater_update_seq(struct eusb2_repeater *er,
 #endif
 		eusb2_repeater_reg_write(er, seq[i+1], seq[i]);
 	}
+
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	/*
+	 * Ace 6 eUSB2 revision tuning: on repeater revisions 42/43 with
+	 * register 0xF6 in {0x02, 0x03, 0x04}, write register 0x54 as
+	 * read + 3. Stock Nord 6 (CPH2793 16.0.5.1200) ships the same
+	 * tuning. Every read must succeed before evaluating or writing.
+	 */
+	if (eusb2_repeater_reg_read(er, &reg_1F1, 0x1F1, 1))
+		return;
+	if (eusb2_repeater_reg_read(er, &reg_FDF6, 0xF6, 1))
+		return;
+	if (eusb2_repeater_reg_read(er, &reg_FD54, 0x54, 1))
+		return;
+
+	if ((reg_1F1 == 42 || reg_1F1 == 43) &&
+			(reg_FDF6 == 0x04 || reg_FDF6 == 0x03 || reg_FDF6 == 0x02)) {
+		dev_dbg(er->ur.dev, "revision tuning: 0x54 0x%02x -> 0x%02x\n",
+						reg_FD54, reg_FD54 + 3);
+		eusb2_repeater_reg_write(er, 0x54, reg_FD54 + 3);
+	}
+#endif
 }
 
 static int eusb2_repeater_get_version(struct usb_repeater *ur)
